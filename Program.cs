@@ -1,19 +1,21 @@
 ﻿using System;
 using System.Globalization;
 using System.Data;
+using System.Linq;
 using System.IO;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace SubjectsStorage
 {
-    public interface IDataStorage
+    public interface ISubjectsStorage
     {
         void PutSubject(Subject subject);
         // TODO: To think about to deprecate this method
         void PutSubjects(IEnumerable<Subject> subjects);
         IEnumerable<Subject> GetAllSubjects();
     }
-    // TODO: To think about using structure instead a class
+    // (-) TODO: To think about using structure instead a class
     public class Subject
     {
         private static readonly int MaxNameLength = 25;
@@ -27,9 +29,7 @@ namespace SubjectsStorage
         public long PassportNumber { get; private set; }
         public DateTime Birthday { get; private set; }
 
-        // TODO: To think about right way to throw exceptions
-        // TODO: To think about using only strings as arguments
-        // TODO: To think about to deprecate this
+        /// Deprecated
         public static Subject CreateSubject(string name, string surname,
             string patronymic, long passportNumber, DateTime birthday)
         {
@@ -52,41 +52,14 @@ namespace SubjectsStorage
             */
 
         }
+        /// Deprecated
         public static Subject CreateSubject(string name, string surname,
             string patronymic, string passportNumber, string birthday)
         {
             return new Subject(name, surname, patronymic, passportNumber, birthday);
         }
 
-        private static bool CheckValues(string name, string surname,
-            string patronymic, long passportNumber, DateTime birthday,
-            ref List<string> errorMessages)
-        {
-            if (errorMessages == null)
-            {
-                errorMessages = new List<string>(4);
-            }
-            if (!CheckStringValue(name))
-            {
-                errorMessages.Add("Incorrect first name");
-            }
-            else if (!CheckStringValue(surname))
-            {
-                errorMessages.Add("Incorrect surname");
-            }
-            else if ((patronymic != null) && (patronymic.Length > 0) && !CheckStringValue(patronymic))
-            {
-                errorMessages.Add("Incorrect patronymic");
-            }
-            else if ((passportNumber < MinPassportNumber) || (passportNumber > MaxPassportNumber))
-            {
-                errorMessages.Add("Incorrect passport number");
-            }
-            
-            return errorMessages.Count == 0;
-        }
-
-        private Subject(string name, string surname, string patronymic,
+        public Subject(string name, string surname, string patronymic,
             string passportNumberStr, string birthdayStr)
         {
             var errorMessages = new List<string>(6);
@@ -94,7 +67,7 @@ namespace SubjectsStorage
             DateTime birthday = new DateTime();
             try
             {
-                passportNumber = long.Parse(passportNumberStr);              
+                passportNumber = long.Parse(passportNumberStr, CultureInfo.InvariantCulture);              
             }
             catch (System.Exception)
             {                
@@ -129,6 +102,35 @@ namespace SubjectsStorage
             }
         }
 
+        /// Check new subject's values and add its to error list
+        private static bool CheckValues(string name, string surname,
+            string patronymic, long passportNumber, DateTime birthday,
+            ref List<string> errorMessages)
+        {
+            if (errorMessages == null)
+            {
+                errorMessages = new List<string>(4);
+            }
+            if (!CheckStringValue(name))
+            {
+                errorMessages.Add("Incorrect first name");
+            }
+            else if (!CheckStringValue(surname))
+            {
+                errorMessages.Add("Incorrect surname");
+            }
+            else if ((patronymic != null) && (patronymic.Length > 0) && !CheckStringValue(patronymic))
+            {
+                errorMessages.Add("Incorrect patronymic");
+            }
+            else if ((passportNumber < MinPassportNumber) || (passportNumber > MaxPassportNumber))
+            {
+                errorMessages.Add("Incorrect passport number");
+            }
+            
+            return errorMessages.Count == 0;
+        }
+
         private static bool CheckStringValue(string value)
         {
             if ((value.Length < 1) || (value.Length > MaxNameLength))
@@ -145,7 +147,7 @@ namespace SubjectsStorage
             }
             return true;
         }
-        // TODO: deprecated, to delete
+        /// Deprecated
         public static bool TryParse(string str, out Subject subject)
         {
             subject = null;
@@ -167,20 +169,36 @@ namespace SubjectsStorage
             }
         }
 
-        // TODO: To make output more readable
+        // (+) TODO: To make output more readable
         public override string ToString()
         {
+            return String.Format("{0} {1} {2}, pass: {3}, birth: {4}",
+                Surname, Name, Patronymic,
+                PassportNumber.ToString(CultureInfo.InvariantCulture),
+                Birthday.ToString(CultureInfo.InvariantCulture));
+            /*
             return String.Format("{0};{1};{2};{3};{4}",
                 Name, Surname, Patronymic,
                 PassportNumber.ToString(CultureInfo.InvariantCulture),
                 Birthday.ToString(CultureInfo.InvariantCulture));
+                */
         }
     }
-    // TODO: To change ToString() method to something else
+    
     public static class SubjectsToCsvConverter
     {
+        public static string ConvertToCsvString(Subject subj)
+        {
+            var passportStr = subj.PassportNumber.ToString().Insert(4, "-");
+            var birthdayStr = subj.Birthday.ToShortDateString();
+            return String.Format("{0};{1};{2};{3};{4};{5}", subj.Surname, subj.Name,
+                subj.Patronymic, birthdayStr, passportStr.Substring(0, 4), passportStr);
+        }
+
+        /// Deprecated
         public static void SaveToCsv(string path, IEnumerable<Subject> subjects)
         {
+            throw new NotImplementedException();
             using (var sw = new StreamWriter(path: path, append: false))
             {
                 foreach (var subj in subjects)
@@ -190,9 +208,10 @@ namespace SubjectsStorage
             }
         }
     }
-    class DataStorage : IDataStorage, IDisposable
+
+    class SubjectsStorage : ISubjectsStorage, IDisposable
     {
-        public DataStorage(string filename)
+        public SubjectsStorage(string filename)
         {
             try
             {
@@ -210,7 +229,11 @@ namespace SubjectsStorage
 
         public void PutSubject(Subject subject)
         {
-            _sw.WriteLine(subject);
+            var resultStr = String.Format(@"{0};{1};{2};{3};{4}",
+                subject.Name, subject.Surname, subject.Patronymic,
+                subject.PassportNumber.ToString(CultureInfo.InvariantCulture),
+                subject.Birthday.ToString(CultureInfo.InvariantCulture));
+            _sw.WriteLine(resultStr);
             _sw.Flush();
         }
 
@@ -231,7 +254,22 @@ namespace SubjectsStorage
                 var field = line.Split(';');
                 if ((field != null) && (field.Length == 5))
                 {
-                    resultSet.Add(Subject.CreateSubject(field[0], field[1], field[2], field[3], field[4]));
+                    Subject nextSubject = null;
+                    try
+                    {
+                        /*
+                        nextSubject = Subject.CreateSubject(field[0], field[1],
+                            field[2], field[3], field[4]);
+                            */
+                        nextSubject = new Subject(field[0], field[1],
+                            field[2], field[3], field[4]);
+                        resultSet.Add(nextSubject);  
+                    }
+                    catch (System.Exception)
+                    {
+                        Console.WriteLine("SubjectsStorage: can't convert string '{0}'",
+                            line);
+                    }
                 }
                 line = _sr.ReadLine();
             }
@@ -257,9 +295,12 @@ namespace SubjectsStorage
         // TODO: Split Main() into a few methods (in switch clause at least)
         static void Main()
         {
-            var path = @"/Users/estarodubtsev/Documents/Programming/Sharp_solutions/SubjectsStorage/db.txt";
-            using (var dataStorage = new DataStorage(path))
+            var path = @"db.txt";
+            using (var dataStorage = new SubjectsStorage(path))
             {
+                _subjects = new ObservableCollection<Subject>(dataStorage.GetAllSubjects());
+                // TODO: To think a little bit more about [0]-element or null
+                _subjects.CollectionChanged += (o, args) => dataStorage.PutSubject(args.NewItems[0] as Subject);
                 do
                 {
                     Console.WriteLine();
@@ -269,7 +310,8 @@ namespace SubjectsStorage
 
                     while (true)
                     {
-                        // TODO: Extract method and dictionary with commands
+                        // TODO: Extract method to dictionary with commands
+                        // (to think about dictionary<string, Action>)?
                         switch (inputStr)
                         {
                             case @"/exit":
@@ -282,11 +324,16 @@ namespace SubjectsStorage
                                 ReadAndSaveSubject(dataStorage);
                                 break;
                             case @"/show":
-                                foreach (var subj in dataStorage.GetAllSubjects())
+                                foreach (var subj in _subjects)
                                 {
                                     Console.WriteLine(subj);
                                 }
-                                //Console.WriteLine("Not implemented, please type another command");
+                                break;
+                            case @"/save":
+                                SaveSubjects(_subjects);
+                                break;
+                            case @"/save sort":
+                                SortAndSaveSubjects();
                                 break;
                             default:
                                 break;
@@ -300,7 +347,51 @@ namespace SubjectsStorage
             }
         }
 
-        private static void ReadAndSaveSubject(DataStorage dataStorage)
+        private static void SaveSubjects(IEnumerable<Subject> subjects)
+        {
+            Console.WriteLine("Enter filename: ");
+            var filename = Console.ReadLine();
+            StreamWriter sw = null;
+            try
+            {
+                sw = new StreamWriter(path: filename, append: false);
+                foreach (var subj in subjects)
+                {
+                    sw.WriteLine(SubjectsToCsvConverter.ConvertToCsvString(subj));
+                }
+                sw.Close();
+            }
+            catch (System.Exception)
+            {
+                Console.WriteLine("Can't create the file");
+            }
+            finally
+            {
+                if (sw != null)
+                {
+                    sw.Close();
+                }
+            }
+
+        }
+        private static void SortAndSaveSubjects()
+        {
+            // TODO: Realize sorting by different fields and orders
+            /*
+            Console.WriteLine("Enter order (asc/desc: )");
+            var order = Console.ReadLine();
+            if ((order != "asc") || (order != "desc"))
+            {
+                return;
+            }
+            Console.WriteLine("Enter field to sort by (name, surname, birtday):");
+            */
+            SaveSubjects(_subjects.OrderBy(s => s.Surname)
+                                .ThenBy(s => s.Name)
+                                .ThenBy(s => s.Patronymic)
+                                .ThenBy(s => s.Birthday));
+        }
+        private static void ReadAndSaveSubject(SubjectsStorage dataStorage)
         {
             string name, surname, patronymic, passportNumber, birthday;
             Console.WriteLine(@"enter name: ");
@@ -311,12 +402,14 @@ namespace SubjectsStorage
             patronymic = Console.ReadLine();
             Console.WriteLine(@"enter passport serial and number (without spaces): ");
             passportNumber = Console.ReadLine();
-            Console.WriteLine(@"enter birth day (dd/mm/yyyy hh:mm:ss): ");
+            Console.WriteLine(@"enter birth day (dd/mm/yyyy): ");
             birthday = Console.ReadLine();
             try
             {
-                Subject nextSubj = Subject.CreateSubject(name, surname, patronymic, passportNumber, birthday);
-                dataStorage.PutSubject(nextSubj);
+                //Subject nextSubj = Subject.CreateSubject(name, surname, patronymic, passportNumber, birthday);
+                //dataStorage.PutSubject(nextSubj);
+                Subject nextSubj = new Subject(name, surname, patronymic, passportNumber, birthday);
+                _subjects.Add(nextSubj);
             }
             catch (System.Exception exc)
             {
@@ -330,6 +423,10 @@ namespace SubjectsStorage
             Console.WriteLine(@"/exit - close program");
             Console.WriteLine(@"/new  - add new subject");
             Console.WriteLine(@"/show - show subjects from.. to..");
+            Console.WriteLine(@"/save - save subjects to csv");
+            Console.WriteLine(@"/save sort - sort subjects and save its to csv");
         }
+
+        private static ObservableCollection<Subject> _subjects;
     }
 }
